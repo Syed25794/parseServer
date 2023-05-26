@@ -48,8 +48,23 @@ Parse.Cloud.define("logOut", async ( req )=>{
     if( !req.user ){
       throw new Error("Unauthorized Access");
     }
-    const user = await Parse.User.logOut();
-    return user ;
+
+    const userId = req.user.id ;
+    const Session = Parse.Object.extend("_Session");
+    const query = new Parse.Query(Session);
+    query.equalTo("user",{
+      __type:'Pointer',
+      className:'_User',
+      objectId:userId
+    });
+    const activeSessions = await query.find({useMasterKey:true});
+    const result = await Parse.User.logOut();
+    
+    for( let i = 0 ;i < activeSessions.length ;i++){
+      activeSessions[i].destroy();
+    }
+    // return {activeSessions, id : req.user.id} ;
+    return "Logout done all sessions destroyed" ;
   } catch (error) {
     console.error(error);
     throw error ;
@@ -171,7 +186,7 @@ Parse.Cloud.define("updatePost", async ( req )=>{
     query.equalTo("objectId",postId);;
     const result = await query.first();
     if( result ){
-      const { title, description , comments } = result.attributes;
+      const { title, description } = result.attributes;
       result.set("title", title1 === undefined ? title : title1);
       result.set("description" , description1 === undefined ? description : description1 );
       if( comments1 !== undefined ){
@@ -188,7 +203,7 @@ Parse.Cloud.define("updatePost", async ( req )=>{
   }
 });
 
-//deleting Object
+//deleting Post with its all comments 
 Parse.Cloud.define("deletePost", async ( req )=>{
   try {
     const { postId } = req.params ;
@@ -209,4 +224,51 @@ Parse.Cloud.define("deletePost", async ( req )=>{
     throw error ;
   }
 });
+
+// Subscribing to specific classObject
+Parse.Cloud.define("subscribe" , async ( req )=>{
+  if( !req.user ){
+    throw new Error("Unauthorized Access!");
+  }
+
+  try {
+    const className = req.params ;
+    const query = new Parse.Query(className);
+    let subscription = await query.subscribe();
+    subscription.on('open',()=>{
+      return 'Subscription Subscribed.';
+    });
+    subscription.on('create',(object)=>{
+      return `Object created : ${object.id}`;
+    });
+    subscription.on('update',(object)=>{
+      return `Object updated : ${object.id}`;
+    });
+    subscription.on('delete',(object)=>{
+      return `Object deleted : ${object.id}`;
+    });
+  } catch (error) {
+    
+  }
+});
+
+
+Parse.Cloud.define("unsubscribe", async ( req )=>{
+  if( !req.user ){
+    throw new Error("Unauthorized Access!");
+  }
+  try {
+    const { className } = req.params ;
+    const query = new Parse.Query(className);
+    const subscription = await query.subscribe();
+    subscription.on('close');
+    subscription.unsubscribe();
+    return 'Subscription Unsubscribed!';
+  } catch (error) {
+    console.error(error);
+    throw error ;
+  }
+});
+
+
 
